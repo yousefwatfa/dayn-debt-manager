@@ -119,6 +119,14 @@ dialog h2{margin-bottom:16px}
   table.stack td::before{content:attr(data-l);color:var(--muted);font-weight:600}
   .toast{bottom:84px}
 }
+#syncbadge{position:fixed;inset-inline-start:16px;bottom:16px;z-index:60;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow);font-weight:600;font-size:.85rem;cursor:pointer}
+#syncbadge::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-inline-end:8px;background:var(--in)}
+#syncbadge.sync-off{background:var(--warn-bg);color:var(--warn)}#syncbadge.sync-off::before{background:var(--warn)}
+#syncbadge.sync-busy::before{background:var(--info);animation:pulse 1s infinite}
+#syncbadge.sync-err{background:var(--out-bg);color:var(--out)}#syncbadge.sync-err::before{background:var(--out)}
+@keyframes pulse{50%{opacity:.3}}
+@media (max-width:860px){#syncbadge{bottom:72px}}
+@media print{#syncbadge{display:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 @media print{
   .side,.bottom,.top .acts,.filters,.tabs,.btn,.skip,.noprint{display:none!important}

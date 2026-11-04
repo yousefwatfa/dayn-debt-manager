@@ -24,6 +24,8 @@ const L = {
     users: 'المستخدمون', logs: 'سجل التدقيق', role: 'الدور', active: 'نشط', disabled: 'معطّل', actionCol: 'الإجراء', entity: 'الكيان', when: 'الوقت', userCol: 'المستخدم',
     saved: 'تم الحفظ', done: 'تمت العملية', due: 'الاستحقاق', daysLate: 'متأخر', loading: 'جارٍ التحميل…', error: 'حدث خطأ', openDebt: 'فتح', back: 'رجوع', close: 'إغلاق', ofTotal: 'من',
     search: 'بحث', navMain: 'التنقل الرئيسي', unnamed: 'بدون', noDue: 'بدون استحقاق', admin_: 'مدير', user_: 'مستخدم', counts: 'ديون مسجلة', settledPct: 'مسدد',
+    offline: 'غير متصل — يُحفظ محلياً', syncing: 'جارٍ المزامنة…', synced: 'تمت المزامنة', pending: 'بانتظار المزامنة', syncError: 'فشلت المزامنة — اضغط للمحاولة',
+    syncRejected: 'تعذّر قبول تغيير في الخادم', needsOnline: 'هذه العملية تحتاج اتصالاً بالإنترنت', logoutPending: 'توجد تغييرات لم تتم مزامنتها وستضيع عند الخروج. هل تريد الخروج؟',
   },
   en: {
     app: 'Dayn', tagline: 'Track debts and receivables with clarity', skip: 'Skip to content',
@@ -48,6 +50,8 @@ const L = {
     users: 'Users', logs: 'Audit log', role: 'Role', active: 'Active', disabled: 'Disabled', actionCol: 'Action', entity: 'Entity', when: 'When', userCol: 'User',
     saved: 'Saved', done: 'Done', due: 'Due', daysLate: 'late', loading: 'Loading…', error: 'Something went wrong', openDebt: 'Open', back: 'Back', close: 'Close', ofTotal: 'of',
     search: 'Search', navMain: 'Main navigation', unnamed: 'None', noDue: 'No due date', admin_: 'Admin', user_: 'User', counts: 'debts recorded', settledPct: 'settled',
+    offline: 'Offline — saved locally', syncing: 'Syncing…', synced: 'Synced', pending: 'Waiting to sync', syncError: 'Sync failed — tap to retry',
+    syncRejected: 'The server rejected a change', needsOnline: 'This action needs an internet connection', logoutPending: 'You have changes that have not synced and they will be lost if you sign out. Sign out anyway?',
   },
 };
 const S = { token: localStorage.getItem('token'), user: null, lang: localStorage.getItem('lang') || 'ar', theme: document.documentElement.dataset.theme || 'light' };
@@ -84,9 +88,14 @@ const I = {
   print: ic('<path d="M6 9V3h12v6M6 18H4a1 1 0 01-1-1v-6a2 2 0 012-2h14a2 2 0 012 2v6a1 1 0 01-1 1h-2"/><rect x="6" y="14" width="12" height="7"/>'),
 };
 
+// Data endpoints are served by the local (offline-first) engine; auth, settings and admin go to the server.
+const LOCAL = /^\/(dashboard|parties|debts|payments|export)(\/|\?|$)/;
 async function api(path, { method = 'GET', body, raw } = {}) {
-  const r = await fetch('/api' + path, { method, headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(S.token ? { authorization: 'Bearer ' + S.token } : {}) }, body: body ? JSON.stringify(body) : undefined });
-  if (r.status === 401 && S.token) { logout(); throw new Error('Unauthorized'); }
+  if (LOCAL.test(path)) return Local.handle(method, path, body || {}, raw);
+  let r;
+  try { r = await fetch('/api' + path, { method, headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(S.token ? { authorization: 'Bearer ' + S.token } : {}) }, body: body ? JSON.stringify(body) : undefined }); }
+  catch { throw new Error(t('needsOnline')); }
+  if (r.status === 401 && S.token) { logout(true); throw new Error('Unauthorized'); }
   if (raw && r.ok) return r;
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || t('error'));
@@ -96,7 +105,35 @@ function toast(msg) {
   const el = Object.assign(document.createElement('div'), { className: 'toast', textContent: msg });
   el.setAttribute('role', 'status'); document.body.append(el); setTimeout(() => el.remove(), 2800);
 }
-function logout() { localStorage.removeItem('token'); S.token = null; S.user = null; location.hash = ''; render(); }
+async function logout(force) {
+  if (!force && Local.pending()) {
+    await Local.sync();
+    if (Local.pending() && !confirm(t('logoutPending'))) return;
+  }
+  await Local.clear(); S.localFor = null;
+  ['token', 'user'].forEach(k => localStorage.removeItem(k)); S.token = null; S.user = null; location.hash = ''; render();
+}
+
+/* sync status badge + background re-render */
+function updateBadge(st) {
+  let el = $('#syncbadge');
+  if (!S.token) { el?.remove(); return; }
+  if (!el) {
+    el = Object.assign(document.createElement('button'), { id: 'syncbadge', type: 'button' });
+    el.setAttribute('role', 'status'); el.onclick = () => Local.sync(); document.body.append(el);
+  }
+  const cls = !st.online ? 'off' : st.syncing ? 'busy' : st.error ? 'err' : st.pending ? 'busy' : 'ok';
+  const txt = !st.online ? t('offline') : st.syncing ? t('syncing') : st.error ? t('syncError') : st.pending ? t('pending') : t('synced');
+  el.className = 'sync-' + cls;
+  el.textContent = st.pending ? `${txt} (${st.pending})` : txt;
+  el.title = st.error || '';
+}
+function softRender() { if ($('dialog[open]')) S.renderLater = true; else render(true); }
+Local.configure({
+  token: () => S.token, onUnauthorized: () => logout(true), onStatus: updateBadge,
+  onData: changed => { if (changed) softRender(); },
+  onRejected: list => toast(`${t('syncRejected')}: ${list[0]}`),
+});
 function setLang(l) { S.lang = l; localStorage.setItem('lang', l); document.documentElement.lang = l; document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr'; render(); }
 function setTheme(th) { S.theme = th; localStorage.setItem('theme', th); document.documentElement.dataset.theme = th; render(); }
 
@@ -113,7 +150,7 @@ function dialog(title, bodyHtml, onSubmit, { submit = t('save'), danger = false 
   d.innerHTML = `<form method="dialog" novalidate><h2 id="dlg-t">${esc(title)}</h2><div class="err" role="alert" hidden></div>${bodyHtml}
     <div class="dlg-acts"><button type="button" class="btn" data-x>${t('cancel')}</button><button class="btn ${danger ? 'danger' : 'primary'}" type="submit">${esc(submit)}</button></div></form>`;
   document.body.append(d);
-  const close = () => { d.close(); d.remove(); };
+  const close = () => { d.close(); d.remove(); if (S.renderLater) { S.renderLater = false; render(true); } };
   d.addEventListener('cancel', e => { e.preventDefault(); close(); });
   $('[data-x]', d).onclick = close;
   $('form', d).onsubmit = async e => {
@@ -334,16 +371,30 @@ async function adminView() {
 }
 
 /* ---------- router ---------- */
-async function render() {
+async function render(silent) {
   const root = $('#root'); $('#skip').textContent = t('skip');
   document.title = `${t('app')} — ${t('tagline')}`;
   const [path] = (location.hash.slice(1) || '/').split('?');
   if (!S.token) {
+    updateBadge({});
     const mode = path === '/register' ? 'register' : 'login';
     root.innerHTML = authView(mode); bindAuth(mode); return;
   }
-  if (!S.user) { try { S.user = await api('/me'); } catch { return; } }
-  root.innerHTML = shell('', `<p class="muted" role="status">${t('loading')}</p>`);
+  if (!S.user) {
+    try { S.user = await api('/me'); }
+    catch (e) {
+      const cached = (() => { try { return JSON.parse(localStorage.getItem('user')); } catch { return null; } })();
+      if (!cached) { if (S.token) root.innerHTML = `<div class="auth"><div class="card"><div class="err" role="alert">${esc(e.message)}</div></div></div>`; return; }
+      S.user = cached;                                    // offline: keep working with the last known profile
+    }
+  }
+  try { localStorage.setItem('user', JSON.stringify(S.user)); } catch {}
+  if (S.localFor !== S.user.id) {
+    root.innerHTML = shell('', `<p class="muted" role="status">${t('loading')}</p>`);
+    await Local.init(S.user.id); S.localFor = S.user.id;
+    if (Local.neverSynced()) await Local.sync();          // first run on this device: pull the data down
+  }
+  if (!silent) root.innerHTML = shell('', `<p class="muted" role="status">${t('loading')}</p>`);
   const seg = path.split('/').filter(Boolean);
   try {
     let html;
@@ -360,7 +411,7 @@ async function render() {
       const pp = new URLSearchParams(location.hash.split('?')[1]).get('party') || '';
       history.replaceState(null, '', '#/debts'); openDebtDialog(null, pp);
     }
-    $('#view')?.focus({ preventScroll: true });
+    if (!silent) $('#view')?.focus({ preventScroll: true });
   } catch (e) {
     $('#view').innerHTML = `<div class="err" role="alert">${esc(e.message)}</div>`;
   }
@@ -404,5 +455,6 @@ document.addEventListener('click', async e => {
   else if (a === 'u-toggle') go(async () => { await api('/admin/users/' + b.dataset.id, { method: 'PUT', body: { active: b.dataset.active !== '1' } }); render(); });
   else if (a === 'u-role') go(async () => { await api('/admin/users/' + b.dataset.id, { method: 'PUT', body: { role: b.dataset.role === 'admin' ? 'user' : 'admin' } }); render(); });
 });
-addEventListener('hashchange', render);
+addEventListener('hashchange', () => render());
 render();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

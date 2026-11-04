@@ -3,6 +3,14 @@
 Web app to track debts and receivables: parties, debts, partial payments, reports, Telegram reminders.
 Arabic (RTL) / English, light / dark mode, mobile-first.
 
+## Offline-first
+The app keeps a full local copy of your data in the browser (IndexedDB). Everything works without a connection;
+changes are queued and pushed to the database automatically when the connection returns
+(`POST /api/sync`, see `web/local.js`). A badge shows Offline / Syncing / Synced / pending count.
+Notes: first sign-in on a device needs a connection; Settings, Telegram and Admin need a connection;
+if two devices edit the same record, the server applies changes in arrival order and the last one wins.
+A service worker (`web/sw.js`) caches the app shell so the page itself opens offline.
+
 ## Local development
 Node.js 22+ (uses built-in `node:sqlite` when no Turso URL is set).
 ```
