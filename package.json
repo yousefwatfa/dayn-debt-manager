@@ -1,0 +1,7 @@
+{
+  "name": "dayn-debt-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Debt management web app (zero dependencies, Node 22+)",
+  "scripts": { "start": "node server.js", "test": "node test.js" }
+}
