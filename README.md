@@ -7,7 +7,7 @@ Arabic (RTL) / English, light / dark mode, mobile-first.
 Node.js 22+ (uses built-in `node:sqlite` when no Turso URL is set).
 ```
 npm install
-node server.js
+node dev-server.js
 ```
 Open http://localhost:3000. The first account registered becomes admin.
 
@@ -24,6 +24,7 @@ Open http://localhost:3000. The first account registered becomes admin.
 
 ## Test
 ```
-set DATA_DIR=%TEMP%\dayn-test && set PORT=3100 && node server.js
+set DATA_DIR=%TEMP%\dayn-test && set PORT=3100 && node dev-server.js
 set BASE=http://localhost:3100 && node test.js
 ```
+
