@@ -1,4 +1,4 @@
-﻿# Dayn — Debt Manager
+# Dayn — Debt Manager
 
 Web app to track debts and receivables: parties, debts, partial payments, reports, Telegram reminders.
 Arabic (RTL) / English, light / dark mode, mobile-first.

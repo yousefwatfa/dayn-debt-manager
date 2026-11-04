@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // Local development server. On Vercel the same handler runs from api/index.js.
 const http = require('node:http');
 const { handler, notifyAll } = require('./lib/core');
