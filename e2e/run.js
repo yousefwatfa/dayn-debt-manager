@@ -182,7 +182,7 @@ async function main() {
     /* ---------- 10b. App shell offline (service worker) — kills the server for real ---------- */
     if (process.env.SERVER_PID) {
       check('Service worker is active and controls the page', await until(`!!navigator.serviceWorker.controller`, 10000));
-      check('Service worker cached the app shell', await ev(`caches.open('dayn-shell-v1').then(c=>c.keys()).then(k=>k.length>=5)`));
+      check('Service worker cached the app shell', await ev(`caches.open('dayn-shell-v2').then(c=>c.keys()).then(k=>k.length>=5)`));
       process.kill(Number(process.env.SERVER_PID)); await sleep(1500);
       check('Server is really down', await ev(`fetch('/api/me').then(()=>false,()=>true)`));
       await go('#/'); await send('Page.reload'); await sleep(2500);

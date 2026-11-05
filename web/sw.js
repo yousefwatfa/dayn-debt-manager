@@ -1,7 +1,7 @@
 'use strict';
 // Caches the app shell so the app opens offline. API calls are never cached here:
 // offline data lives in IndexedDB (see local.js).
-const CACHE = 'dayn-shell-v1';
+const CACHE = 'dayn-shell-v2';
 const SHELL = ['/', '/ui.js', '/local.js', '/theme.js', '/app.css', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', e => {

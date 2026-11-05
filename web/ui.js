@@ -18,6 +18,7 @@ const L = {
     noPayments: 'لا توجد دفعات بعد', voidIt: 'إلغاء', voidDebt: 'إلغاء الدين', voidPay: 'إلغاء الدفعة', reason: 'السبب (اختياري)', confirmVoid: 'سيتم إلغاء هذا السجل مع الاحتفاظ به في سجل التدقيق. متابعة؟',
     viewAtt: 'عرض المرفق', balance: 'الرصيد', settled: 'مسوّى', theyOweMe: 'مدين لي', iOweThem: 'أنا مدين له',
     from: 'من', to: 'إلى', apply: 'تطبيق', exportCsv: 'تصدير Excel/CSV', printPdf: 'طباعة / PDF', statement: 'كشف حساب', generated: 'أُنشئ في',
+    rates: 'أسعار الصرف', perUsd: 'لكل 1 دولار', editRates: 'تعديل', approxIn: 'تقريباً بـ', ratesNote: 'أسعار تقريبية يدوية وليست مباشرة من السوق', ratesHint: 'أدخل السعر لكل 1 دولار. تُحفظ على هذا الجهاز وتُستخدم لتحويل الإجماليات تقريباً.', resetRates: 'استرجاع الافتراضي', ratesInvalid: 'أدخل أسعاراً صحيحة أكبر من صفر', ratesSkipped: 'عملات أخرى بلا سعر لم تُحسب في التحويل.',
     profile: 'الملف الشخصي', changePw: 'تغيير كلمة المرور', currentPw: 'كلمة المرور الحالية', newPw: 'كلمة المرور الجديدة', prefCurrency: 'العملة المفضلة',
     appearance: 'المظهر', theme: 'الوضع', dark: 'داكن', light: 'فاتح', language: 'اللغة',
     notifications: 'إشعارات تيليجرام', tgToken: 'رمز البوت (Bot token)', tgChat: 'معرّف المحادثة (Chat ID)', freq: 'التكرار', off: 'متوقف', daily: 'يومي', weekly: 'أسبوعي', sendTest: 'إرسال ملخص تجريبي', tgSaved: 'محفوظ — اتركه فارغاً للإبقاء عليه',
@@ -44,6 +45,7 @@ const L = {
     noPayments: 'No payments yet', voidIt: 'Void', voidDebt: 'Void debt', voidPay: 'Void payment', reason: 'Reason (optional)', confirmVoid: 'This record will be voided and kept in the audit trail. Continue?',
     viewAtt: 'View attachment', balance: 'Balance', settled: 'Settled', theyOweMe: 'Owes me', iOweThem: 'I owe',
     from: 'From', to: 'To', apply: 'Apply', exportCsv: 'Export Excel/CSV', printPdf: 'Print / PDF', statement: 'Account statement', generated: 'Generated',
+    rates: 'Exchange rates', perUsd: 'per 1 USD', editRates: 'Edit', approxIn: 'Approx. in', ratesNote: 'Manual approximate rates, not live market data', ratesHint: 'Enter the rate per 1 USD. Saved on this device and used to convert totals approximately.', resetRates: 'Reset to default', ratesInvalid: 'Enter valid rates greater than zero', ratesSkipped: 'Other currencies without a rate are not included in the conversion.',
     profile: 'Profile', changePw: 'Change password', currentPw: 'Current password', newPw: 'New password', prefCurrency: 'Preferred currency',
     appearance: 'Appearance', theme: 'Theme', dark: 'Dark', light: 'Light', language: 'Language',
     notifications: 'Telegram notifications', tgToken: 'Bot token', tgChat: 'Chat ID', freq: 'Frequency', off: 'Off', daily: 'Daily', weekly: 'Weekly', sendTest: 'Send test summary', tgSaved: 'Saved — leave empty to keep',
@@ -214,6 +216,31 @@ const head = (title, acts = '') => `<div class="top"><h1>${title}</h1><div class
 const debtRow = d => `<a class="item" href="#/debts/${d.id}"><div><strong>${esc(d.party_name)}</strong> ${typeBadge(d.type)}
   <div class="sub">${t('due')}: <span class="ltr">${d.due_date || t('noDue')}</span></div></div><div style="text-align:end">${amt(d.remaining, d.currency, d.type === 'given' ? 'pos' : 'neg')}<div>${statusBadge(d)}</div></div></a>`;
 
+// Exchange rates (units of each currency per 1 USD). Editable in Settings, stored on this device.
+const RATE_CODES = ['USD', 'ILS', 'JOD'];
+const RATE_DEFAULTS = { USD: 1, ILS: 3.6, JOD: 0.709 };
+function getRates() {
+  try { const r = JSON.parse(localStorage.getItem('rates') || '{}'); const o = { USD: 1 };
+    RATE_CODES.forEach(c => { const v = Number(r[c]); o[c] = c === 'USD' ? 1 : (v > 0 ? v : RATE_DEFAULTS[c]); }); o.at = r.at || ''; return o; }
+  catch { return { ...RATE_DEFAULTS, at: '' }; }
+}
+const fmtRate = n => (n >= 100 ? n.toFixed(2) : n >= 1 ? n.toFixed(3) : n.toFixed(4)).replace(/\.?0+$/, '');
+function ratesCard(tot) {
+  const r = getRates(), cross = (a, b) => r[b] / r[a];
+  const pairs = [['USD', 'ILS'], ['USD', 'JOD'], ['JOD', 'ILS']];
+  const target = r[S.user.currency] ? S.user.currency : 'USD';
+  const covered = tot.filter(x => r[x.currency]), skipped = tot.length - covered.length;
+  const conv = key => covered.reduce((s, x) => s + x[key] / r[x.currency], 0) * r[target];
+  const hasData = covered.some(x => x.receivable || x.payable);
+  return `<section class="card" style="margin-top:16px" aria-labelledby="h-fx"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <h2 id="h-fx">${t('rates')}</h2><a class="btn sm" href="#/settings">${t('editRates')}</a></div>
+    <div class="grid g3">${pairs.map(([a, b]) => `<div class="card rate"><div class="sub ltr">1 ${a} =</div><div class="ltr" style="font-size:1.25rem;font-weight:700">${fmtRate(cross(a, b))} ${b}</div></div>`).join('')}</div>
+    ${hasData ? `<p style="margin-top:12px"><strong>${t('approxIn')} ${target}</strong></p>
+    <div class="grid g3" style="margin-top:6px">${[['toCollect', 'receivable'], ['toPay', 'payable'], ['net', 'net']].map(([l, k]) => `<div class="card rate"><div class="sub">${t(l)}</div><div class="ltr" style="font-weight:700">${esc(money(conv(k), target))}</div></div>`).join('')}</div>
+    ${skipped ? `<p class="sub">${t('ratesSkipped')}</p>` : ''}` : ''}
+    <p class="sub" style="margin-top:8px">${t('ratesNote')}${r.at ? ' · ' + esc(r.at) : ''}</p></section>`;
+}
+
 async function dashboard() {
   const d = await api('/dashboard');
   const tot = d.totals.length ? d.totals : [{ currency: S.user.currency, receivable: 0, payable: 0, net: 0 }];
@@ -227,6 +254,7 @@ async function dashboard() {
       <div class="list">${d.overdue.length ? d.overdue.map(debtRow).join('') : `<p class="muted">${t('noOverdue')}</p>`}</div></section>
     <section class="card" aria-labelledby="h-up"><h2 id="h-up" style="margin-bottom:12px">${t('upcoming')} <span class="badge b-partial">${d.upcoming.length}</span></h2>
       <div class="list">${d.upcoming.length ? d.upcoming.map(debtRow).join('') : `<p class="muted">${t('noUpcoming')}</p>`}</div></section></div>
+    ${ratesCard(tot)}
     <section class="card" style="margin-top:16px"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><strong>${d.counts.total || 0} ${t('counts')}</strong><span>${pct}% ${t('settledPct')}</span></div>
       <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div></section>`);
 }
@@ -345,6 +373,11 @@ async function settings() {
   <form class="card" id="f-pw" novalidate><h2 style="margin-bottom:14px">${t('changePw')}</h2><div class="err" role="alert" hidden></div>
     ${field('s-cp', t('currentPw'), '<input id="s-cp" name="current" type="password" autocomplete="current-password" required class="ltr">')}
     ${field('s-np', t('newPw'), '<input id="s-np" name="password" type="password" autocomplete="new-password" required minlength="8" class="ltr">', t('pwHint'))}<button class="btn primary" type="submit">${t('changePw')}</button></form>
+  <form class="card" id="f-rates" novalidate><h2 style="margin-bottom:14px">${t('rates')}</h2><div class="err" role="alert" hidden></div>
+    <p class="sub" style="margin-bottom:12px">${t('ratesHint')}</p>
+    ${field('r-ils', `ILS — ${t('perUsd')}`, `<input id="r-ils" name="ILS" type="number" step="0.0001" min="0.0001" inputmode="decimal" required class="ltr" value="${getRates().ILS}">`)}
+    ${field('r-jod', `JOD — ${t('perUsd')}`, `<input id="r-jod" name="JOD" type="number" step="0.0001" min="0.0001" inputmode="decimal" required class="ltr" value="${getRates().JOD}">`)}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit">${t('save')}</button><button class="btn" type="button" data-act="rates-reset">${t('resetRates')}</button></div></form>
   <section class="card"><h2 style="margin-bottom:14px">${t('appearance')}</h2><div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn" data-act="theme">${S.theme === 'dark' ? I.sun + t('light') : I.moon + t('dark')}</button><button class="btn" data-act="lang">${I.globe}${S.lang === 'ar' ? 'English' : 'العربية'}</button></div></section></div>`);
 }
@@ -356,6 +389,12 @@ function bindSettings() {
   };
   wire('#f-prof', async d => { S.user = await api('/me', { method: 'PUT', body: d }); toast(t('saved')); });
   wire('#f-tg', async d => { if (!d.tg_token) delete d.tg_token; S.user = await api('/me', { method: 'PUT', body: d }); toast(t('saved')); render(); });
+  wire('#f-rates', async d => {
+    const ils = Number(d.ILS), jod = Number(d.JOD);
+    if (!(ils > 0) || !(jod > 0)) throw new Error(t('ratesInvalid'));
+    localStorage.setItem('rates', JSON.stringify({ ILS: ils, JOD: jod, at: new Date().toISOString().slice(0, 10) })); toast(t('saved'));
+  });
+  $('[data-act="rates-reset"]').onclick = () => { localStorage.removeItem('rates'); toast(t('saved')); render(); };
   wire('#f-pw', async (d, f) => { await api('/me/password', { method: 'PUT', body: d }); f.reset(); toast(t('saved')); });
 }
 
