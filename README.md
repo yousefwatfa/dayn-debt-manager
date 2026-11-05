@@ -30,6 +30,9 @@ Open http://localhost:3000. The first account registered becomes admin.
 ## Env vars
 `PORT`, `DATA_DIR` (local only), `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `JWT_SECRET`, `CRON_SECRET`.
 
+## Screenshots & test report
+See [docs/TESTING.md](docs/TESTING.md): 18 API checks + 40 end-to-end checks, with screenshots of every screen.
+
 ## Test
 ```
 set DATA_DIR=%TEMP%\dayn-test && set PORT=3100 && node dev-server.js

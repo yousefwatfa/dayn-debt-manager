@@ -1,0 +1,19 @@
+ok   register
+ok   unauth blocked
+ok   bad login rejected
+ok   create party
+ok   debt overdue/unpaid
+ok   partial payment
+ok   overpay rejected
+ok   fully paid
+ok   void payment recalculates
+ok   dashboard
+ok   csv export
+ok   party balance
+ok   admin route guarded
+ok   soft delete party
+ok   sync applies valid ops, rejects invalid
+ok   sync snapshot has payment applied
+ok   sync replay is idempotent
+ok   sync void
+18 checks
