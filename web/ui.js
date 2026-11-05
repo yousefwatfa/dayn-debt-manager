@@ -18,7 +18,7 @@ const L = {
     noPayments: 'لا توجد دفعات بعد', voidIt: 'إلغاء', voidDebt: 'إلغاء الدين', voidPay: 'إلغاء الدفعة', reason: 'السبب (اختياري)', confirmVoid: 'سيتم إلغاء هذا السجل مع الاحتفاظ به في سجل التدقيق. متابعة؟',
     viewAtt: 'عرض المرفق', balance: 'الرصيد', settled: 'مسوّى', theyOweMe: 'مدين لي', iOweThem: 'أنا مدين له',
     from: 'من', to: 'إلى', apply: 'تطبيق', exportCsv: 'تصدير Excel/CSV', printPdf: 'طباعة / PDF', statement: 'كشف حساب', generated: 'أُنشئ في',
-    rates: 'أسعار الصرف', perUsd: 'لكل 1 دولار', editRates: 'تعديل', approxIn: 'تقريباً بـ', ratesNote: 'أسعار تقريبية يدوية وليست مباشرة من السوق', ratesHint: 'أدخل السعر لكل 1 دولار. تُحفظ على هذا الجهاز وتُستخدم لتحويل الإجماليات تقريباً.', resetRates: 'استرجاع الافتراضي', ratesInvalid: 'أدخل أسعاراً صحيحة أكبر من صفر', ratesSkipped: 'عملات أخرى بلا سعر لم تُحسب في التحويل.',
+    rates: 'أسعار الصرف (مباشرة)', approxIn: 'تقريباً بـ', ratesLoading: 'جارٍ تحميل الأسعار…', ratesNote: 'أسعار السوق العالمية، تُحدَّث كل ساعة (open.er-api.com)', ratesSkipped: 'عملات بلا سعر متاح لم تُحسب في التحويل.',
     profile: 'الملف الشخصي', changePw: 'تغيير كلمة المرور', currentPw: 'كلمة المرور الحالية', newPw: 'كلمة المرور الجديدة', prefCurrency: 'العملة المفضلة',
     appearance: 'المظهر', theme: 'الوضع', dark: 'داكن', light: 'فاتح', language: 'اللغة',
     notifications: 'إشعارات تيليجرام', tgToken: 'رمز البوت (Bot token)', tgChat: 'معرّف المحادثة (Chat ID)', freq: 'التكرار', off: 'متوقف', daily: 'يومي', weekly: 'أسبوعي', sendTest: 'إرسال ملخص تجريبي', tgSaved: 'محفوظ — اتركه فارغاً للإبقاء عليه',
@@ -45,7 +45,7 @@ const L = {
     noPayments: 'No payments yet', voidIt: 'Void', voidDebt: 'Void debt', voidPay: 'Void payment', reason: 'Reason (optional)', confirmVoid: 'This record will be voided and kept in the audit trail. Continue?',
     viewAtt: 'View attachment', balance: 'Balance', settled: 'Settled', theyOweMe: 'Owes me', iOweThem: 'I owe',
     from: 'From', to: 'To', apply: 'Apply', exportCsv: 'Export Excel/CSV', printPdf: 'Print / PDF', statement: 'Account statement', generated: 'Generated',
-    rates: 'Exchange rates', perUsd: 'per 1 USD', editRates: 'Edit', approxIn: 'Approx. in', ratesNote: 'Manual approximate rates, not live market data', ratesHint: 'Enter the rate per 1 USD. Saved on this device and used to convert totals approximately.', resetRates: 'Reset to default', ratesInvalid: 'Enter valid rates greater than zero', ratesSkipped: 'Other currencies without a rate are not included in the conversion.',
+    rates: 'Exchange rates (live)', approxIn: 'Approx. in', ratesLoading: 'Loading rates…', ratesNote: 'Global market rates, refreshed hourly (open.er-api.com)', ratesSkipped: 'Currencies without an available rate are not included.',
     profile: 'Profile', changePw: 'Change password', currentPw: 'Current password', newPw: 'New password', prefCurrency: 'Preferred currency',
     appearance: 'Appearance', theme: 'Theme', dark: 'Dark', light: 'Light', language: 'Language',
     notifications: 'Telegram notifications', tgToken: 'Bot token', tgChat: 'Chat ID', freq: 'Frequency', off: 'Off', daily: 'Daily', weekly: 'Weekly', sendTest: 'Send test summary', tgSaved: 'Saved — leave empty to keep',
@@ -216,29 +216,35 @@ const head = (title, acts = '') => `<div class="top"><h1>${title}</h1><div class
 const debtRow = d => `<a class="item" href="#/debts/${d.id}"><div><strong>${esc(d.party_name)}</strong> ${typeBadge(d.type)}
   <div class="sub">${t('due')}: <span class="ltr">${d.due_date || t('noDue')}</span></div></div><div style="text-align:end">${amt(d.remaining, d.currency, d.type === 'given' ? 'pos' : 'neg')}<div>${statusBadge(d)}</div></div></a>`;
 
-// Exchange rates (units of each currency per 1 USD). Editable in Settings, stored on this device.
-const RATE_CODES = ['USD', 'ILS', 'JOD'];
-const RATE_DEFAULTS = { USD: 1, ILS: 3.6, JOD: 0.709 };
-function getRates() {
-  try { const r = JSON.parse(localStorage.getItem('rates') || '{}'); const o = { USD: 1 };
-    RATE_CODES.forEach(c => { const v = Number(r[c]); o[c] = c === 'USD' ? 1 : (v > 0 ? v : RATE_DEFAULTS[c]); }); o.at = r.at || ''; return o; }
-  catch { return { ...RATE_DEFAULTS, at: '' }; }
-}
+// Live exchange rates (units of each currency per 1 USD) fetched via /api/rates; last result is cached on this device for offline use.
+const FX_KEY = 'fx', FX_TTL = 3600e3;
+function getFx() { try { const f = JSON.parse(localStorage.getItem(FX_KEY) || 'null'); return f && f.rates ? f : null; } catch { return null; } }
 const fmtRate = n => (n >= 100 ? n.toFixed(2) : n >= 1 ? n.toFixed(3) : n.toFixed(4)).replace(/\.?0+$/, '');
 function ratesCard(tot) {
-  const r = getRates(), cross = (a, b) => r[b] / r[a];
-  const pairs = [['USD', 'ILS'], ['USD', 'JOD'], ['JOD', 'ILS']];
-  const target = r[S.user.currency] ? S.user.currency : 'USD';
-  const covered = tot.filter(x => r[x.currency]), skipped = tot.length - covered.length;
-  const conv = key => covered.reduce((s, x) => s + x[key] / r[x.currency], 0) * r[target];
-  const hasData = covered.some(x => x.receivable || x.payable);
-  return `<section class="card" style="margin-top:16px" aria-labelledby="h-fx"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-    <h2 id="h-fx">${t('rates')}</h2><a class="btn sm" href="#/settings">${t('editRates')}</a></div>
-    <div class="grid g3">${pairs.map(([a, b]) => `<div class="card rate"><div class="sub ltr">1 ${a} =</div><div class="ltr" style="font-size:1.25rem;font-weight:700">${fmtRate(cross(a, b))} ${b}</div></div>`).join('')}</div>
+  const fx = getFx(), r = fx && fx.rates;
+  const inner = !r ? `<p class="muted">${t('ratesLoading')}</p>` : (() => {
+    const cross = (a, b) => r[b] / r[a];
+    const pairs = [['USD', 'ILS'], ['USD', 'JOD'], ['JOD', 'ILS']];
+    const target = r[S.user.currency] ? S.user.currency : 'USD';
+    const covered = tot.filter(x => r[x.currency]), skipped = tot.length - covered.length;
+    const conv = key => covered.reduce((s, x) => s + x[key] / r[x.currency], 0) * r[target];
+    const hasData = covered.some(x => x.receivable || x.payable);
+    return `<div class="grid g3">${pairs.map(([a, b]) => `<div class="card rate"><div class="sub ltr">1 ${a} =</div><div class="ltr" style="font-size:1.25rem;font-weight:700">${fmtRate(cross(a, b))} ${b}</div></div>`).join('')}</div>
     ${hasData ? `<p style="margin-top:12px"><strong>${t('approxIn')} ${target}</strong></p>
     <div class="grid g3" style="margin-top:6px">${[['toCollect', 'receivable'], ['toPay', 'payable'], ['net', 'net']].map(([l, k]) => `<div class="card rate"><div class="sub">${t(l)}</div><div class="ltr" style="font-weight:700">${esc(money(conv(k), target))}</div></div>`).join('')}</div>
     ${skipped ? `<p class="sub">${t('ratesSkipped')}</p>` : ''}` : ''}
-    <p class="sub" style="margin-top:8px">${t('ratesNote')}${r.at ? ' · ' + esc(r.at) : ''}</p></section>`;
+    <p class="sub" style="margin-top:8px">${t('ratesNote')} · <span class="ltr">${esc((fx.updated || '').slice(0, 16).replace('T', ' '))} UTC</span></p>`;
+  })();
+  return `<section class="card" id="fx-card" style="margin-top:16px" aria-labelledby="h-fx"><h2 id="h-fx" style="margin-bottom:12px">${t('rates')}</h2>${inner}</section>`;
+}
+async function refreshRates(tot) {
+  const fx = getFx();
+  if (fx && Date.now() - (fx.fetched || 0) < FX_TTL) return;
+  try {
+    const d = await api('/rates');
+    localStorage.setItem(FX_KEY, JSON.stringify({ rates: d.rates, updated: d.updated, fetched: Date.now() }));
+    const el = $('#fx-card'); if (el) el.outerHTML = ratesCard(tot);
+  } catch { /* offline or service down: keep the cached rates */ }
 }
 
 async function dashboard() {
@@ -246,6 +252,7 @@ async function dashboard() {
   const tot = d.totals.length ? d.totals : [{ currency: S.user.currency, receivable: 0, payable: 0, net: 0 }];
   const stat = (cls, ico, lbl, key) => `<div class="card stat ${cls}"><div class="lbl"><span class="ic">${ico}</span>${lbl}</div>
     ${tot.map(x => `<div class="val ${key === 'net' ? netCls(x[key]) : ''}">${esc(money(x[key], x.currency))}</div>`).join('')}</div>`;
+  setTimeout(() => refreshRates(tot), 100);
   const pct = d.counts.total ? Math.round(100 * d.counts.paid / d.counts.total) : 0;
   return shell('#/', head(t('dashboard'), `<a class="btn primary" href="#/debts?new=1">${I.plus}${t('addDebt')}</a>`) +
     `<div class="grid g3">${stat('in', I.down, t('toCollect'), 'receivable')}${stat('out', I.up, t('toPay'), 'payable')}${stat('net', I.scale, t('net'), 'net')}</div>
@@ -373,11 +380,6 @@ async function settings() {
   <form class="card" id="f-pw" novalidate><h2 style="margin-bottom:14px">${t('changePw')}</h2><div class="err" role="alert" hidden></div>
     ${field('s-cp', t('currentPw'), '<input id="s-cp" name="current" type="password" autocomplete="current-password" required class="ltr">')}
     ${field('s-np', t('newPw'), '<input id="s-np" name="password" type="password" autocomplete="new-password" required minlength="8" class="ltr">', t('pwHint'))}<button class="btn primary" type="submit">${t('changePw')}</button></form>
-  <form class="card" id="f-rates" novalidate><h2 style="margin-bottom:14px">${t('rates')}</h2><div class="err" role="alert" hidden></div>
-    <p class="sub" style="margin-bottom:12px">${t('ratesHint')}</p>
-    ${field('r-ils', `ILS — ${t('perUsd')}`, `<input id="r-ils" name="ILS" type="number" step="0.0001" min="0.0001" inputmode="decimal" required class="ltr" value="${getRates().ILS}">`)}
-    ${field('r-jod', `JOD — ${t('perUsd')}`, `<input id="r-jod" name="JOD" type="number" step="0.0001" min="0.0001" inputmode="decimal" required class="ltr" value="${getRates().JOD}">`)}
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit">${t('save')}</button><button class="btn" type="button" data-act="rates-reset">${t('resetRates')}</button></div></form>
   <section class="card"><h2 style="margin-bottom:14px">${t('appearance')}</h2><div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn" data-act="theme">${S.theme === 'dark' ? I.sun + t('light') : I.moon + t('dark')}</button><button class="btn" data-act="lang">${I.globe}${S.lang === 'ar' ? 'English' : 'العربية'}</button></div></section></div>`);
 }
@@ -389,12 +391,6 @@ function bindSettings() {
   };
   wire('#f-prof', async d => { S.user = await api('/me', { method: 'PUT', body: d }); toast(t('saved')); });
   wire('#f-tg', async d => { if (!d.tg_token) delete d.tg_token; S.user = await api('/me', { method: 'PUT', body: d }); toast(t('saved')); render(); });
-  wire('#f-rates', async d => {
-    const ils = Number(d.ILS), jod = Number(d.JOD);
-    if (!(ils > 0) || !(jod > 0)) throw new Error(t('ratesInvalid'));
-    localStorage.setItem('rates', JSON.stringify({ ILS: ils, JOD: jod, at: new Date().toISOString().slice(0, 10) })); toast(t('saved'));
-  });
-  $('[data-act="rates-reset"]').onclick = () => { localStorage.removeItem('rates'); toast(t('saved')); render(); };
   wire('#f-pw', async (d, f) => { await api('/me/password', { method: 'PUT', body: d }); f.reset(); toast(t('saved')); });
 }
 

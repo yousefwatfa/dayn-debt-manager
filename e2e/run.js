@@ -71,6 +71,7 @@ async function main() {
     check('Dashboard totals are correct (USD receivable 1,300 / payable 800 / net 500)', /1,300\.00/.test(vals) && /800\.00/.test(vals) && /500\.00/.test(vals), vals);
     check('Overdue and upcoming lists are populated', await ev(`document.querySelectorAll('#h-od ~ .list .item, #h-up ~ .list .item').length>=2`));
     check('Sync badge shows "synced"', /تمت المزامنة/.test(await badge() || ''), await badge());
+    check('Live exchange rates card shows converted totals', await until(`!!document.querySelector('#fx-card .rate') && /USD/.test(document.querySelector('#fx-card').innerText) && document.querySelectorAll('#fx-card .rate').length >= 6`, 15000));
     await shot('02-dashboard-ar-light');
 
     /* ---------- 3. Parties ---------- */
@@ -182,7 +183,7 @@ async function main() {
     /* ---------- 10b. App shell offline (service worker) — kills the server for real ---------- */
     if (process.env.SERVER_PID) {
       check('Service worker is active and controls the page', await until(`!!navigator.serviceWorker.controller`, 10000));
-      check('Service worker cached the app shell', await ev(`caches.open('dayn-shell-v2').then(c=>c.keys()).then(k=>k.length>=5)`));
+      check('Service worker cached the app shell', await ev(`caches.open('dayn-shell-v3').then(c=>c.keys()).then(k=>k.length>=5)`));
       process.kill(Number(process.env.SERVER_PID)); await sleep(1500);
       check('Server is really down', await ev(`fetch('/api/me').then(()=>false,()=>true)`));
       await go('#/'); await send('Page.reload'); await sleep(2500);

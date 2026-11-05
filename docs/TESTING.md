@@ -3,7 +3,7 @@
 | Suite | What it covers | Result |
 |---|---|---|
 | `node test.js` | REST API + offline-sync endpoint (auth, parties, debts, payments, void, CSV, admin guard, sync idempotency) | **18 / 18** — [output](api-test-results.txt) |
-| `node e2e/run.js` | Real browser (headless Edge over CDP): every screen, form validation, payments, reports, settings, admin, dark mode, Arabic/English, mobile, accessibility spot checks, offline mode, sync, **server-down reload** | **40 / 40** — [details](e2e-results.md) |
+| `node e2e/run.js` | Real browser (headless Edge over CDP): every screen, form validation, payments, reports, settings, admin, dark mode, Arabic/English, mobile, accessibility spot checks, offline mode, sync, **server-down reload** | **41 / 41** — [details](e2e-results.md) |
 
 ## How to reproduce
 ```

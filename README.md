@@ -27,11 +27,14 @@ Open http://localhost:3000. The first account registered becomes admin.
    - `CRON_SECRET` (any random string; enables the daily Telegram summary cron)
 3. Deploy (`vercel --prod` or connect the GitHub repo). Tables are created automatically on first request.
 
+## Exchange rates
+The dashboard shows live global rates (USD/ILS/JOD and a converted total in your preferred currency), fetched by the server from open.er-api.com (GET /api/rates, cached 1 hour) and cached on the device for offline use.
+
 ## Env vars
 `PORT`, `DATA_DIR` (local only), `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `JWT_SECRET`, `CRON_SECRET`.
 
 ## Screenshots & test report
-See [docs/TESTING.md](docs/TESTING.md): 18 API checks + 40 end-to-end checks, with screenshots of every screen.
+See [docs/TESTING.md](docs/TESTING.md): 18 API checks + 41 end-to-end checks, with screenshots of every screen.
 
 ## Test
 ```
